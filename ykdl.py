@@ -47,17 +47,17 @@ sys.argv = win32_unicode_argv()
 
 ########################################################################
 class Youku(object):
-    """"""
+    """youku下载类"""
 
     #----------------------------------------------------------------------
     def __init__(self,url,defi):
-        """Constructor"""
+        """参数：视频地址，视频清晰度（1，2，3，4）"""
         self.url = url
         self.defi = defi
 
     #----------------------------------------------------------------------
     def title(self):
-        """"""
+        """获取视频标题"""
         id = self.video_id()
         print id
         html = urllib2.urlopen('http://v.youku.com/v_show/id_%s.html'%id).read()
@@ -66,7 +66,7 @@ class Youku(object):
         return video_title
     #----------------------------------------------------------------------
     def m3u8(self):
-        """"""
+        """下载视频M3U8"""
         id = self.video_id()
         if self.defi=='4':
             defi='flv'
@@ -81,6 +81,7 @@ class Youku(object):
         return chunk
     #----------------------------------------------------------------------  
     def video_id(self):
+        """获取视频ID"""
         patterns = [r'^http://v.youku.com/v_show/id_([\w=]+).html',
                     r'^http://player.youku.com/player.php/sid/([\w=]+)/v.swf',
                     r'^loader\.swf\?VideoIDS=([\w=]+)',
@@ -88,6 +89,7 @@ class Youku(object):
         return r1_of(patterns, self.url)
     #----------------------------------------------------------------------
     def trim_title(self,title):
+        """格式化视频标题"""
         title = title.replace(u' - 视频 - 优酷视频 - 在线观看', '')
         title = title.replace(u' - 专辑 - 优酷视频', '')
         title = re.sub(ur'—([^—]+)—优酷网，视频高清在线观看', '', title)
@@ -100,7 +102,7 @@ class Youku(object):
 
 #----------------------------------------------------------------------
 def get_link(m3u8, tmp_dir):
-    """"""
+    """分析M3U8，获取分割视频地址，将地址写入aria2c配置文件"""
     aria2_txt_path=os.path.normcase(tmp_dir+'/aria2.txt')
     defi='mp4'
     m3u8_lines = m3u8.readlines()
@@ -125,7 +127,7 @@ def get_link(m3u8, tmp_dir):
 
 #----------------------------------------------------------------------
 def download(proxy, defi, tmp_dir, video_title, output_dir):
-    ''''''
+    '''下载分割视频并合并，分别调用外部程序aria2c Flvbind MP4Box'''
     aria2_txt_path=os.path.normcase(tmp_dir+'/aria2.txt')
     video_tmp=os.path.normcase(tmp_dir+'/videos')
     src_path=os.path.normcase(os.getcwd()+'/src')
@@ -173,20 +175,20 @@ def download(proxy, defi, tmp_dir, video_title, output_dir):
 
 #----------------------------------------------------------------------
 def r1(pattern,text):
-    ''''''
+    '''re匹配'''
     m=re.search(pattern,text)
     if m:
         return m.group(1)
 #----------------------------------------------------------------------
 def r1_of(patterns, text):
-    ''''''
+    '''re匹配'''
     for p in patterns:
         x = r1(p, text)
         if x:
             return x
 #----------------------------------------------------------------------
 def proxy_switch(proxy):
-    ''''''
+    '''代理设置'''
     proxy_handler = urllib2.ProxyHandler({"http":proxy})
     null_proxy_handler = urllib2.ProxyHandler({})
     if proxy:
@@ -197,7 +199,7 @@ def proxy_switch(proxy):
 
 #----------------------------------------------------------------------
 def get_cb_text():
-    ''''''
+    '''win读取剪切板'''
     win32clipboard.OpenClipboard()  
     try :
         text = win32clipboard.GetClipboardData(win32con.CF_TEXT)
@@ -207,7 +209,7 @@ def get_cb_text():
     return text 
 #----------------------------------------------------------------------
 def get_home_dir():
-    ''''''
+    '''获取用于文件夹'''
     try:
         path1=os.path.expanduser('~')
     except:
@@ -226,7 +228,7 @@ def get_home_dir():
     return ''
 #----------------------------------------------------------------------
 def get_tmp_dir(tmp_dir):
-    ''''''
+    '''获取缓存文件夹'''
     if not os.path.isdir(tmp_dir):
         for tmp_dir in ('/tmp',r'c:\Windows\Temp'):
             if os.path.isdir(tmp_dir):
@@ -238,7 +240,7 @@ def get_tmp_dir(tmp_dir):
     return tmp_dir
 #----------------------------------------------------------------------
 def get_output_dir(output_dir):
-    ''''''
+    '''获取输出文件夹'''
     if not os.path.isdir(output_dir):
         output_dir1=os.path.normcase(get_home_dir()+'/视频')
         for output_dir in (r'd:',output_dir1,get_home_dir()):
@@ -251,6 +253,7 @@ def get_output_dir(output_dir):
     return output_dir
 #----------------------------------------------------------------------
 def main():
+    '''主程序'''
     print 'Online Video Download-----@zhiyuan'
     help=u'Usage:\tovd [-h] [-f] [-p] [-o] [-t] url\r\n\
 Options:\r\n\

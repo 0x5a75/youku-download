@@ -13,8 +13,8 @@ import win32con
 import win32clipboard
 socket.setdefaulttimeout(15)
 default_encoding = locale.getdefaultlocale()[-1]
-default_conf = {'tmp_dir': '',    #缓存地址
-                'output_dir': '',    #输出地址
+default_conf = {'tmp_dir': u'',    #缓存地址
+                'output_dir': u'd:\Download',    #输出地址
                 'defi': '1',    #视频清晰度
                 'proxy': '127.0.0.1:1998'    #代理地址
                 }
@@ -57,7 +57,6 @@ class Youku(object):
     def title(self):
         """获取视频标题"""
         id = self.video_id()
-        print id
         html = urllib2.urlopen('http://v.youku.com/v_show/id_%s.html'%id).read()
         video_title = r1_of([r'<title>([^<>]*)</title>'], html).decode('utf-8')
         video_title= self.trim_title(video_title)
@@ -124,20 +123,20 @@ def get_link(m3u8, tmp_dir):
     return defi
 
 #----------------------------------------------------------------------
-def download(video_title, defi, tmp_dir, output_dir, proxy):
+def download(title, defi, tmp_dir, output_dir, proxy):
     '''下载分割视频并合并，分别调用外部程序aria2c Flvbind MP4Box'''
     aria2_txt_path=os.path.normcase(tmp_dir+'/aria2.txt')
     video_tmp=os.path.normcase(tmp_dir+'/videos')
     src_path=os.path.normcase(os.getcwd()+'/src')
-    output=os.path.normcase(output_dir)
-    proxy=proxy.replace('http://','')    
+    output_dir=os.path.normcase(output_dir)
+    proxy=proxy.replace('http://','')
     if proxy:
         proxy=r' --http-proxy="http://%s"'%proxy
     if os.name=='nt':
         if os.path.exists(video_tmp):
             os.system('rd /S /Q %s'%video_tmp)
         os.mkdir(video_tmp)
-        print video_title, u'--正在下载，下载的路径是', output
+        print title, u'--正在下载，下载的路径是', output_dir
         dl_split=subprocess.call(args='"%s\\aria2c" -j50 -i%s -d%s %s'%(src_path,aria2_txt_path,video_tmp,proxy),shell=True)
         file_list=os.walk(video_tmp)
         src_flv=''
@@ -146,16 +145,16 @@ def download(video_title, defi, tmp_dir, output_dir, proxy):
             src_mp4=src_mp4+' -cat '+video_tmp+'\\'+j
             src_flv=src_flv+' '+video_tmp+'\\'+j
         if defi=='flv':
-            os.system('"%s\\Flvbind" %s\\%s.%s %s'%(src_path,output,video_title,defi,src_flv))
+            os.system('"%s\\Flvbind" %s\\%s.%s %s'%(src_path,output_dir,title,defi,src_flv))
         if defi=='mp4':
-            os.system('"%s\\MP4Box" -new %s\\%s.%s %s'%(src_path,output,video_title,defi,src_mp4))
+            os.system('"%s\\MP4Box" -new %s\\%s.%s %s'%(src_path,output_dir,title,defi,src_mp4))
         os.system('rd /S /Q %s'%video_tmp)
         os.remove(aria2_txt_path)
     else:
         if os.path.isdir(video_tmp):
             shutil.rmtree(video_tmp)
         os.mkdir(video_tmp)
-        print '%s--正在下载，下载的路径是%s'%(video_title,output)
+        print '%s--正在下载，下载的路径是%s'%(title,output_dir)
         dl_split=subprocess.call(args='aria2c -j50 -i%s -d%s%s'%(aria2_txt_path,video_tmp,proxy),shell=True)
         file_list=os.walk(video_tmp)
         src_mp4=''
@@ -164,9 +163,9 @@ def download(video_title, defi, tmp_dir, output_dir, proxy):
             src_mp4=src_mp4+' -cat '+video_tmp+'/'+j
             src_flv=src_flv+' '+video_tmp+'/'+j
         if defi=='flv':
-            os.system('mencoder -ovc copy -oac mp3lame -idx -o %s/%s.%s %s'%(output,video_title,defi,src_flv))
+            os.system('mencoder -ovc copy -oac mp3lame -idx -o %s/%s.%s %s'%(output_dir,title,defi,src_flv))
         if defi=='mp4':
-            os.system('MP4Box -new %s/%s.%s %s'%(output,video_title,defi,src_mp4))
+            os.system('MP4Box -new %s/%s.%s %s'%(output_dir,title,defi,src_mp4))
         shutil.rmtree(video_tmp)
         os.remove(aria2_txt_path)    
 
@@ -314,7 +313,7 @@ url:\t视频地址 例：http://v.youku.com/v_show/id_*********.html\r\n\
             print e
             continue
         try:
-            download(video_title, defi, tmp_dir, output_dir, proxy)
+            download(title, defi, tmp_dir, output_dir, proxy)
         except BaseException, e:
             promot = e
             continue

@@ -13,17 +13,15 @@ import win32con
 import win32clipboard
 socket.setdefaulttimeout(15)
 default_encoding = locale.getdefaultlocale()[-1]
-
+default_conf = {'tmp_dir': '',    #缓存地址
+                'output_dir': '',    #输出地址
+                'defi': '1',    #视频清晰度
+                'proxy': '127.0.0.1:1998'    #代理地址
+                }
 #----------------------------------------------------------------------
 def win32_unicode_argv():
-    """Uses shell32.GetCommandLineArgvW to get sys.argv as a list of Unicode
-    strings.
-
-    Versions 2.x of Python don't support Unicode in sys.argv on
-    Windows, with the underlying Windows API instead replacing multi-byte
-    characters with '?'.
-    """
-
+    '''sys.argv 参数格式为unicode'''
+    
     from ctypes import POINTER, byref, cdll, c_int, windll
     from ctypes.wintypes import LPCWSTR, LPWSTR
 
@@ -39,11 +37,11 @@ def win32_unicode_argv():
     argc = c_int(0)
     argv = CommandLineToArgvW(cmd, byref(argc))
     if argc.value > 0:
-        # Remove Python executable and commands if present
         start = argc.value - len(sys.argv)
         return [argv[i] for i in
                 xrange(start, argc.value)]
 sys.argv = win32_unicode_argv()
+
 
 ########################################################################
 class Youku(object):
@@ -126,12 +124,12 @@ def get_link(m3u8, tmp_dir):
     return defi
 
 #----------------------------------------------------------------------
-def download(proxy, defi, tmp_dir, video_title, output_dir):
+def download(video_title, defi, tmp_dir, output_dir, proxy):
     '''下载分割视频并合并，分别调用外部程序aria2c Flvbind MP4Box'''
     aria2_txt_path=os.path.normcase(tmp_dir+'/aria2.txt')
     video_tmp=os.path.normcase(tmp_dir+'/videos')
     src_path=os.path.normcase(os.getcwd()+'/src')
-    output=os.path.normcase(get_output_dir(output_dir))
+    output=os.path.normcase(output_dir)
     proxy=proxy.replace('http://','')    
     if proxy:
         proxy=r' --http-proxy="http://%s"'%proxy
@@ -254,6 +252,11 @@ def get_output_dir(output_dir):
 #----------------------------------------------------------------------
 def main():
     '''主程序'''
+    tmp_dir = default_conf['tmp_dir']
+    output_dir = default_conf['output_dir']
+    defi = default_conf['defi']
+    proxy = default_conf['proxy']
+    
     print 'Online Video Download-----@zhiyuan'
     help=u'Usage:\tovd [-h] [-f] [-p] [-o] [-t] url\r\n\
 Options:\r\n\
@@ -261,20 +264,16 @@ Options:\r\n\
 -f:\t清晰度 1:高清MP4 2:超清Flv 3:高清Flv 4:标清Flv 例:-f1 默认:1\r\n\
 -p:\t代理 例：-p127.0.0.1:1998 默认:不启用\r\n-o:\t输出文件夹 例：-od:\download\ 默认:D盘或用户文件夹\r\n\
 -t:\t临时文件夹 默认:系统默认缓存文件夹\r\n\
-url:\tyouku视频地址 例：http://v.youku.com/v_show/id_*********.html\r\n\
+url:\t视频地址 例：http://v.youku.com/v_show/id_*********.html\r\n\
 示例:\tovd -p127.0.0.1:1998 -f2 -od:\download http://v.youku.com/v_show/id_*********.html'
+
     try:
         opts,args=getopt.getopt(sys.argv[1:],"hf:p:o:t:")
-        print opts ,args
-    except BaseException, err:
-        print err
+    except BaseException, e:
+        print e
         print help
         sys.exit()
-    tmp_dir=''
-    output_dir=''
-    defi='1'
-    promot=''
-    proxy=''
+
     for o,a in opts:
         if o=='-h':
             print help
@@ -296,9 +295,11 @@ url:\tyouku视频地址 例：http://v.youku.com/v_show/id_*********.html\r\n\
         else:
             print help
             sys.exit()
-            
-    tmp_dir=get_tmp_dir(tmp_dir)
+
+    tmp_dir = get_tmp_dir(tmp_dir)
+    output_dir = get_output_dir(output_dir)
     proxy_switch(proxy)
+    
     for url in args:
         print u'开始下载:', url
         youku = Youku(url, defi)
@@ -309,12 +310,11 @@ url:\tyouku视频地址 例：http://v.youku.com/v_show/id_*********.html\r\n\
             continue
         try:
             defi = get_link(youku.m3u8(), tmp_dir)
-            print defi
         except BaseException, e:
             print e
             continue
         try:
-            download(proxy, defi, tmp_dir, title, output_dir)
+            download(video_title, defi, tmp_dir, output_dir, proxy)
         except BaseException, e:
             promot = e
             continue

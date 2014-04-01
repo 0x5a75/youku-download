@@ -4,6 +4,7 @@ import re
 import urllib2
 import os
 import sys
+import json
 import getopt
 import shutil
 import subprocess
@@ -45,25 +46,32 @@ sys.argv = win32_unicode_argv()
 
 ########################################################################
 class Youku(object):
-    """youku下载类"""
+    '''youku下载类'''
 
     #----------------------------------------------------------------------
     def __init__(self,url,defi):
-        """参数：视频地址，视频清晰度（1，2，3，4）"""
+        '''参数：视频地址，视频清晰度（1，2，3，4）'''
         self.url = url
         self.defi = defi
+    #----------------------------------------------------------------------
+    def info(self):
+        '''获取下载信息'''
+        title = self.title()
+        links = self.links()[0]
+        defi = self.links()[1]
+        return (title, links, defi)
 
     #----------------------------------------------------------------------
     def title(self):
-        """获取视频标题"""
+        '''获取视频标题'''
         id = self.video_id()
         html = urllib2.urlopen('http://v.youku.com/v_show/id_%s.html'%id).read()
         video_title = r1_of([r'<title>([^<>]*)</title>'], html).decode('utf-8')
         video_title= self.trim_title(video_title)
         return video_title
     #----------------------------------------------------------------------
-    def m3u8(self):
-        """下载视频M3U8"""
+    def links(self):
+        '''下载视频M3U8'''
         id = self.video_id()
         if self.defi=='4':
             defi='flv'
@@ -75,10 +83,23 @@ class Youku(object):
             defi='mp4'
         url='http://v.youku.com/player/getRealM3U8/vid/'+id+'/type/'+defi+'/video.m3u8'
         chunk=urllib2.urlopen(url)
-        return chunk
+        m3u8_lines = chunk.readlines()
+        links=[]
+        while not links:
+            for i in m3u8_lines:
+                try:
+                    m=re.match(r'http.*%s'%defi,i)
+                    if m.group() not in links:
+                        links.append(m.group())
+                except BaseException, e:
+                    #print e
+                    continue
+            if not links:
+                defi='flv'
+        return (links, defi)
     #----------------------------------------------------------------------  
     def video_id(self):
-        """获取视频ID"""
+        '''获取视频ID'''
         patterns = [r'^http://v.youku.com/v_show/id_([\w=]+).html',
                     r'^http://player.youku.com/player.php/sid/([\w=]+)/v.swf',
                     r'^loader\.swf\?VideoIDS=([\w=]+)',
@@ -86,7 +107,7 @@ class Youku(object):
         return r1_of(patterns, self.url)
     #----------------------------------------------------------------------
     def trim_title(self,title):
-        """格式化视频标题"""
+        '''格式化视频标题'''
         title = title.replace(u' - 视频 - 优酷视频 - 在线观看', '')
         title = title.replace(u' - 专辑 - 优酷视频', '')
         title = re.sub(ur'—([^—]+)—优酷网，视频高清在线观看', '', title)
@@ -97,30 +118,60 @@ class Youku(object):
             title=title+i
         return title.encode(default_encoding)
 
+########################################################################
+class Sohu(object):
+    '''Sohu下载类'''
+
+    #----------------------------------------------------------------------
+    def __init__(self,url, defi):
+        '''参数：视频地址'''
+        self.url = url
+        self.defi = defi
+
+    #----------------------------------------------------------------------
+    def info(self):
+        '''获取下载信息'''
+        html = urllib2.urlopen(self.url).read()
+        self.id = re.findall(r'vid="(\d+)"',html)[0]
+        data = json.loads(urllib2.urlopen('http://hot.vrs.sohu.com/vrs_flash.action?vid=%s' % self.id).read())
+        links=[]
+        host = data['allot']
+        prot = data['prot']
+        data = data['data']
+        title = data['tvName']
+        for file, new in zip(data['clipsURL'], data['su']):
+            links.append(self.real_url(host, prot, file, new))
+        title = self.trim_title(title)
+        return (title, links, 'mp4')
+    #----------------------------------------------------------------------
+    def real_url(self, host, prot, file, new):
+        '''实时url'''
+        url = 'http://%s/?prot=%s&file=%s&new=%s' % (host, prot, file, new)
+        s = urllib2.urlopen(url).read().split('|')
+        return '%s%s?key=%s' % (s[0][:-1], new, s[3])
+    #----------------------------------------------------------------------
+    def trim_title(self,title):
+        '''格式化视频标题'''
+        pattern=u'[a-zA-Z0-9\u4e00-\u9fa5]+'
+        j=re.findall(pattern,title)
+        title=u''
+        for i in j:
+            title=title+i
+        return title.encode(default_encoding)
+
+
 #----------------------------------------------------------------------
-def get_link(m3u8, tmp_dir):
-    """分析M3U8，获取分割视频地址，将地址写入aria2c配置文件"""
+def aria2_conf(links, defi, tmp_dir):
+    '''获取分割视频地址，将地址写入aria2c配置文件'''
     aria2_txt_path=os.path.normcase(tmp_dir+'/aria2.txt')
-    defi='mp4'
-    m3u8_lines = m3u8.readlines()
-    cb = ''
-    while True:
-        for i in m3u8_lines:
-            try:
-                m=re.match(r'http.*%s'%defi,i)
-                if m.group() not in cb:
-                    cb=cb+m.group()+'\r\n\tmax-connection-per-server=16\r\n\tmin-split-size=1M\r\n\tsplit=15\r\n'
-            except BaseException, e:
-                #print e
-                continue
-        if cb=='':
-            defi='flv'
-        else:
-            break
+    count = 97
+    cb=''
+    for i in links:
+        cb=cb+i+'\r\n\tout=%s.%s\r\n\tmax-connection-per-server=16\r\n\tmin-split-size=1M\r\n\tsplit=15\r\n'%(chr(count),defi)
+        count = count +1
     f=open(aria2_txt_path,'w+')
     f.write(cb)
     f.close()
-    return defi
 
 #----------------------------------------------------------------------
 def download(title, defi, tmp_dir, output_dir, proxy):
@@ -142,6 +193,7 @@ def download(title, defi, tmp_dir, output_dir, proxy):
         src_flv=''
         src_mp4=''
         for j in file_list.next()[-1]:
+            print j
             src_mp4=src_mp4+' -cat '+video_tmp+'\\'+j
             src_flv=src_flv+' '+video_tmp+'\\'+j
         if defi=='flv':
@@ -301,22 +353,30 @@ url:\t视频地址 例：http://v.youku.com/v_show/id_*********.html\r\n\
     
     for url in args:
         print u'开始下载:', url
-        youku = Youku(url, defi)
+        if 'youku' in url:
+            ovd = Youku(url, defi)
+        elif 'sohu' in url:
+            ovd = Sohu(url, defi)
+        else:
+            continue
         try:
-            title = youku.title()
+            info = ovd.info()
         except BaseException, e:
             print e
             continue
+        title = info[0]
+        links = info[1]
+        defi = info[2]
         try:
-            defi = get_link(youku.m3u8(), tmp_dir)
+            aria2_conf(links, defi, tmp_dir)
         except BaseException, e:
             print e
             continue
         try:
             download(title, defi, tmp_dir, output_dir, proxy)
         except BaseException, e:
-            promot = e
-            continue
+            print e
+            continue        
 
 if __name__ == '__main__':
     main()

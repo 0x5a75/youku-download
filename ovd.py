@@ -12,12 +12,15 @@ import locale
 import socket
 import win32con
 import win32clipboard
+
+from xml.etree import ElementTree
+
 socket.setdefaulttimeout(15)
 default_encoding = locale.getdefaultlocale()[-1]
 default_conf = {'tmp_dir': u'',    #缓存地址
-                'output_dir': u'd:\Download',    #输出地址
+                'output_dir': u'd:',    #输出地址
                 'defi': '1',    #视频清晰度
-                'proxy': '127.0.0.1:1998'    #代理地址
+                'proxy': ''    #代理地址
                 }
 #----------------------------------------------------------------------
 def win32_unicode_argv():
@@ -132,8 +135,25 @@ class Sohu(object):
     def info(self):
         '''获取下载信息'''
         html = urllib2.urlopen(self.url).read()
-        self.id = re.findall(r'vid="(\d+)"',html)[0]
-        data = json.loads(urllib2.urlopen('http://hot.vrs.sohu.com/vrs_flash.action?vid=%s' % self.id).read())
+        id = int(re.findall(r'vid="(\d+)"',html)[0])
+        data = json.loads(urllib2.urlopen('http://hot.vrs.sohu.com/vrs_flash.action?vid=%s' % id).read())
+        if self.defi=='1':
+            if data['data']['oriVid'] not in (0, id):
+                data = json.loads(urllib2.urlopen('http://hot.vrs.sohu.com/vrs_flash.action?vid=%s' % data['data']['oriVid']).read())
+            else:
+                self.defi = '2'
+        if self.defi=='2':
+            if data['data']['superVid'] not in (0, id):
+                data = json.loads(urllib2.urlopen('http://hot.vrs.sohu.com/vrs_flash.action?vid=%s' % data['data']['superVid']).read())
+            else:
+                self.defi = '3'
+        if self.defi=='3':
+            if data['data']['highVid'] not in (0, id):
+                data = json.loads(urllib2.urlopen('http://hot.vrs.sohu.com/vrs_flash.action?vid=%s' % data['data']['highVid']).read())
+            else:
+                self.defi = '4'
+        if self.defi=='4' and data['data']['norVid'] not in (0, id):
+            data = json.loads(urllib2.urlopen('http://hot.vrs.sohu.com/vrs_flash.action?vid=%s' % data['data']['norVid']).read())
         links=[]
         host = data['allot']
         prot = data['prot']
@@ -149,6 +169,54 @@ class Sohu(object):
         url = 'http://%s/?prot=%s&file=%s&new=%s' % (host, prot, file, new)
         s = urllib2.urlopen(url).read().split('|')
         return '%s%s?key=%s' % (s[0][:-1], new, s[3])
+    #----------------------------------------------------------------------
+    def trim_title(self,title):
+        '''格式化视频标题'''
+        pattern=u'[a-zA-Z0-9\u4e00-\u9fa5]+'
+        j=re.findall(pattern,title)
+        title=u''
+        for i in j:
+            title=title+i
+        return title.encode(default_encoding)
+
+########################################################################
+class Tudou(object):
+    '''Tudou下载类'''
+
+    #----------------------------------------------------------------------
+    def __init__(self,url, defi):
+        '''参数：视频地址'''
+        self.url = url
+        self.defi = defi
+
+    #----------------------------------------------------------------------
+    def info(self):
+        '''获取下载信息'''
+        html = urllib2.urlopen(self.url).read()
+        #icode = re.findall('''icode[:=] *['"](.+?)['"]''',html)[0]
+        icode = re.findall("\,icode: '(.+?)'",html)[0]
+        #vcode = re.findall("\,vcode: '(.+?)'",html)[0]
+        title = re.findall("\,kw: '(.+?)'",html)[0]
+        data = json.loads(urllib2.urlopen('http://www.tudou.com/outplay/goto/getItemSegs.action?code=%s' % icode).read())
+        print icode,title,data
+        links=[]
+        if self.defi=='1'and '5' in data:
+            data  = data['5']
+        elif self.defi=='2' and '3' in data:
+            data  = data['3']
+        elif self.defi=='3' and '2' in data:
+            data  = data['2']
+        else:
+            data = data.items()[0][1]
+        for i in data:
+            chunk = urllib2.urlopen('http://v2.tudou.com/f?id=%s'%i['k']).read()
+            root = ElementTree.fromstring(chunk)
+            link = root.getiterator('f')[0].text
+            link = re.findall("(.+?)\&bc=",link)[0]
+            links.append(link)
+        title = self.trim_title(title.decode('utf8'))
+        return (title, links, 'flv')
+
     #----------------------------------------------------------------------
     def trim_title(self,title):
         '''格式化视频标题'''
@@ -176,11 +244,12 @@ def aria2_conf(links, defi, tmp_dir):
 #----------------------------------------------------------------------
 def download(title, defi, tmp_dir, output_dir, proxy):
     '''下载分割视频并合并，分别调用外部程序aria2c Flvbind MP4Box'''
-    aria2_txt_path=os.path.normcase(tmp_dir+'/aria2.txt')
-    video_tmp=os.path.normcase(tmp_dir+'/videos')
-    src_path=os.path.normcase(os.getcwd()+'/src')
-    output_dir=os.path.normcase(output_dir)
-    proxy=proxy.replace('http://','')
+    aria2_txt_path = os.path.normcase(tmp_dir+'/aria2.txt')
+    video_tmp = os.path.normcase(tmp_dir+'/videos')
+    src_path = os.path.normcase(os.getcwd()+'/src')
+    output_dir = os.path.normcase(output_dir)
+    proxy = proxy.replace('http://','')
+    #header = r'--header="User-Agent: Mozilla/5.0 (Windows NT 6.1) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/35.0.1916.6 Safari/537.36"'
     if proxy:
         proxy=r' --http-proxy="http://%s"'%proxy
     if os.name=='nt':
@@ -357,6 +426,8 @@ url:\t视频地址 例：http://v.youku.com/v_show/id_*********.html\r\n\
             ovd = Youku(url, defi)
         elif 'sohu' in url:
             ovd = Sohu(url, defi)
+        #elif 'tudou' in url:
+            #ovd = Tudou(url, defi)
         else:
             continue
         try:

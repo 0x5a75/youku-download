@@ -18,9 +18,9 @@ from xml.etree import ElementTree
 socket.setdefaulttimeout(15)
 default_encoding = locale.getdefaultlocale()[-1]
 default_conf = {'tmp_dir': u'',    #缓存地址
-                'output_dir': u'd:',    #输出地址
+                'output_dir': u'd:\download',    #输出地址
                 'defi': '1',    #视频清晰度
-                'proxy': ''    #代理地址
+                'proxy': '127.0.0.1:1998'    #代理地址
                 }
 #----------------------------------------------------------------------
 def win32_unicode_argv():
@@ -76,18 +76,19 @@ class Youku(object):
     def links(self):
         '''下载视频M3U8'''
         id = self.video_id()
-        if self.defi=='4':
-            defi='flv'
-        elif self.defi=='3':
-            defi='hd1'
-        elif self.defi=='2':
-            defi='hd2'
+        if self.defi == '1':
+            defi = 'hd2'
+        elif self.defi == '2':
+            defi = 'mp4'
+        elif self.defi == '3':
+            defi = 'flv'
         else:
-            defi='mp4'
+            defi = 'mp4'
         url='http://v.youku.com/player/getRealM3U8/vid/'+id+'/type/'+defi+'/video.m3u8'
         chunk=urllib2.urlopen(url)
         m3u8_lines = chunk.readlines()
         links=[]
+        defi = 'mp4'
         while not links:
             for i in m3u8_lines:
                 try:
@@ -193,12 +194,15 @@ class Tudou(object):
     def info(self):
         '''获取下载信息'''
         html = urllib2.urlopen(self.url).read()
-        #icode = re.findall('''icode[:=] *['"](.+?)['"]''',html)[0]
         icode = re.findall("\,icode: '(.+?)'",html)[0]
-        #vcode = re.findall("\,vcode: '(.+?)'",html)[0]
+        try:
+            vcode = re.findall("\,vcode: '(.+?)'",html)[0]
+        except:
+            vcode = None
+        if vcode:
+            return ['http://v.youku.com/v_show/id_%s.html'%vcode]
         title = re.findall("\,kw: '(.+?)'",html)[0]
         data = json.loads(urllib2.urlopen('http://www.tudou.com/outplay/goto/getItemSegs.action?code=%s' % icode).read())
-        print icode,title,data
         links=[]
         if self.defi=='1'and '5' in data:
             data  = data['5']
@@ -212,7 +216,7 @@ class Tudou(object):
             chunk = urllib2.urlopen('http://v2.tudou.com/f?id=%s'%i['k']).read()
             root = ElementTree.fromstring(chunk)
             link = root.getiterator('f')[0].text
-            link = re.findall("(.+?)\&bc=",link)[0]
+            link = re.findall("(.+?)\&playtype",link)[0]
             links.append(link)
         title = self.trim_title(title.decode('utf8'))
         return (title, links, 'flv')
@@ -249,7 +253,7 @@ def download(title, defi, tmp_dir, output_dir, proxy):
     src_path = os.path.normcase(os.getcwd()+'/src')
     output_dir = os.path.normcase(output_dir)
     proxy = proxy.replace('http://','')
-    #header = r'--header="User-Agent: Mozilla/5.0 (Windows NT 6.1) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/35.0.1916.6 Safari/537.36"'
+    header = r'--header="xxx"'
     if proxy:
         proxy=r' --http-proxy="http://%s"'%proxy
     if os.name=='nt':
@@ -257,7 +261,7 @@ def download(title, defi, tmp_dir, output_dir, proxy):
             os.system('rd /S /Q %s'%video_tmp)
         os.mkdir(video_tmp)
         print title, u'--正在下载，下载的路径是', output_dir
-        dl_split=subprocess.call(args='"%s\\aria2c" -j50 -i%s -d%s %s'%(src_path,aria2_txt_path,video_tmp,proxy),shell=True)
+        dl_split=subprocess.call(args='"%s\\aria2c" -j50 -i%s -d%s %s %s'%(src_path,aria2_txt_path,video_tmp,proxy,header),shell=True)
         file_list=os.walk(video_tmp)
         src_flv=''
         src_mp4=''
@@ -426,8 +430,8 @@ url:\t视频地址 例：http://v.youku.com/v_show/id_*********.html\r\n\
             ovd = Youku(url, defi)
         elif 'sohu' in url:
             ovd = Sohu(url, defi)
-        #elif 'tudou' in url:
-            #ovd = Tudou(url, defi)
+        elif 'tudou' in url:
+            ovd = Tudou(url, defi)
         else:
             continue
         try:
@@ -435,6 +439,9 @@ url:\t视频地址 例：http://v.youku.com/v_show/id_*********.html\r\n\
         except BaseException, e:
             print e
             continue
+        if len(info) == 1:
+            ovd = Youku(info[0], defi)
+            info = ovd.info()
         title = info[0]
         links = info[1]
         defi = info[2]
@@ -447,7 +454,7 @@ url:\t视频地址 例：http://v.youku.com/v_show/id_*********.html\r\n\
             download(title, defi, tmp_dir, output_dir, proxy)
         except BaseException, e:
             print e
-            continue        
+            continue
 
 if __name__ == '__main__':
     main()
